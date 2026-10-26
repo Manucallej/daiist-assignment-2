@@ -29,7 +29,7 @@ ROBOFLOW_VERSION = 1
 # highest confidence among detections of these classes; detections of any
 # other class do not raise it. Must be names from the dataset:
 # "With Helmet", "Without Helmet".
-POSITIVE_CLASSES: list[str] | None = None
+POSITIVE_CLASSES: list[str] | None = ["Without Helmet"]
 
 # --- Base rate (step 6) ------------------------------------------------------
 # Share of items that really are violations at your checkpoint, between 0 and
@@ -38,10 +38,38 @@ POSITIVE_CLASSES: list[str] | None = None
 BASE_RATE: float | None = None
 
 # --- Cost of each outcome, in euros per item (step 6) ------------------------
-COST_FALSE_NEGATIVE: float | None = None  # rider without a helmet let through
-COST_FALSE_POSITIVE: float | None = None  # rider with a helmet stopped anyway
-COST_TRUE_POSITIVE: float | None = None   # rider without a helmet correctly stopped
-COST_TRUE_NEGATIVE: float | None = None   # rider with a helmet correctly let through
+# Each outcome's cost is the sum of its components. Fill in every component
+# of an outcome (0 is a valid answer) and its total is computed below; leave
+# any one as None and that outcome stays unset. Write in REPORT.md where each
+# figure comes from.
+
+
+def _total(*components: float | None) -> float | None:
+    return None if any(c is None for c in components) else float(sum(components))
+
+
+# False negative: rider without a helmet let through.
+FN_SAFETY_FINE: float | None = None         # expected fine per violation: chance an
+                                            # inspection catches it x the fine
+FN_EXPECTED_ACCIDENT_COST: float | None = None  # chance of an accident on this trip x
+                                                # its cost to the company (sick pay,
+                                                # insurance, liability)
+
+# False positive: rider with a helmet stopped anyway.
+FP_RIDER_TIME: float | None = None          # minutes lost x rider's cost per minute
+FP_DELIVERY_DELAY: float | None = None      # late-delivery compensation, if any
+
+# True positive: rider without a helmet correctly stopped.
+TP_RIDER_TIME: float | None = None          # minutes to fetch and put on a helmet x cost
+TP_DELIVERY_DELAY: float | None = None      # late-delivery compensation, if any
+
+# True negative: rider with a helmet correctly let through.
+TN_COST: float | None = None                # usually nothing, but say why
+
+COST_FALSE_NEGATIVE = _total(FN_SAFETY_FINE, FN_EXPECTED_ACCIDENT_COST)
+COST_FALSE_POSITIVE = _total(FP_RIDER_TIME, FP_DELIVERY_DELAY)
+COST_TRUE_POSITIVE = _total(TP_RIDER_TIME, TP_DELIVERY_DELAY)
+COST_TRUE_NEGATIVE = _total(TN_COST)
 
 # --- Human review (step 7) ---------------------------------------------------
 # Assumes a reviewer always gets the item right, so a reviewed item costs its
