@@ -1,5 +1,5 @@
 """
-Assignment 2: training pipeline for parcel damage detection.
+Assignment 2: training pipeline for rotten fruit detection.
 
     uv run python main.py train
 
@@ -7,11 +7,11 @@ Start to finish, with no manual steps:
 
 1. Download the dataset version named in decisions.py from Roboflow Universe.
 2. Describe it from its label files: images and instances per class and split,
-   and how big the damage is relative to the image.
+   and how big each fruit is relative to the image.
 3. Finetune yolo11n from its pretrained COCO checkpoint, and copy the best
    weights to weights/best.pt.
 4. Evaluate on the test split: box-level metrics per class and the confusion
-   matrix, then a per-parcel score for every test image from the finetuned
+   matrix, then a per-item score for every test image from the finetuned
    model and from the zero-shot COCO model.
 5. If the costs in decisions.py are filled in, sweep the threshold and save
    the cost curve, the cheapest threshold and the cheapest review band.
@@ -41,7 +41,7 @@ import decisions
 from api_key import load_api_key
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "datasets" / f"{decisions.ROBOFLOW_PROJECT}-v{decisions.ROBOFLOW_VERSION}"
+DATA_DIR = ROOT / "datasets" / f"{decisions.ROBOFLOW_WORKSPACE}{decisions.ROBOFLOW_PROJECT}-v{decisions.ROBOFLOW_VERSION}"
 RUNS_DIR = ROOT / "runs"
 WEIGHTS_PATH = ROOT / "weights" / "best.pt"
 ARTIFACTS = ROOT / "artifacts"
@@ -60,6 +60,7 @@ TRAIN_SETTINGS = {
     "fraction": 0.1 if SMOKE_TEST else 1.0,
 }
 SPLITS = {"train": "train", "val": "valid", "test": "test"}  # YOLO name -> Roboflow folder
+COCO_FRUIT_IDS = [46, 47, 49]  # banana, apple, orange in the COCO class list
 
 
 def pick_device() -> str:
@@ -127,7 +128,7 @@ def describe_dataset(names: list[str]) -> dict:
             }
         stats[split] = {
             "images": len(images),
-            "images_without_damage": int(sum(len(b) == 0 for b in boxes)),
+            "images_without_boxes": int(sum(len(b) == 0 for b in boxes)),
             "classes": per_class,
         }
     return stats
@@ -180,7 +181,7 @@ def evaluate_boxes(weights: Path, data_yaml: Path, device: str) -> dict:
     }
 
 
-def score_test_parcels(weights: Path, names: list[str], device: str) -> pd.DataFrame:
+def score_test_items(weights: Path, names: list[str], device: str) -> pd.DataFrame:
     """One row per test image: which classes it truly contains, and the
     highest confidence each model gives each class (0 if nothing found)."""
     finetuned = YOLO(str(weights))
@@ -199,31 +200,34 @@ def score_test_parcels(weights: Path, names: list[str], device: str) -> pd.DataF
             mine = confidences[classes == index]
             row[f"score_{name}"] = float(mine.max()) if len(mine) else 0.0
 
-        # COCO has no damage classes, so zero-shot the best it can do is
-        # "found some object here". Its score is its top confidence for anything.
+        # COCO knows apple, banana and orange but not fresh versus rotten, so
+        # zero-shot the best it can say is "there is a fruit here". Its score
+        # is its top confidence for any of those three classes.
         result = coco.predict(image, conf=0.001, device=device, verbose=False)[0]
         coco_conf = result.boxes.conf.cpu().numpy()
-        row["score_coco_any"] = float(coco_conf.max()) if len(coco_conf) else 0.0
+        coco_cls = result.boxes.cls.cpu().numpy().astype(int)
+        fruit = np.isin(coco_cls, COCO_FRUIT_IDS)
+        row["score_coco_fruit"] = float(coco_conf[fruit].max()) if fruit.any() else 0.0
         rows.append(row)
     return pd.DataFrame(rows)
 
 
 def roc_auc(y_true: np.ndarray, y_score: np.ndarray) -> float | None:
-    """Chance that a random damaged parcel outscores a random fine one."""
-    damaged, fine = y_score[y_true == 1], y_score[y_true == 0]
-    if len(damaged) == 0 or len(fine) == 0:
+    """Chance that a random rotten item outscores a random fresh one."""
+    rotten, fresh = y_score[y_true == 1], y_score[y_true == 0]
+    if len(rotten) == 0 or len(fresh) == 0:
         return None
-    wins = (damaged[:, None] > fine[None, :]).sum() + 0.5 * (damaged[:, None] == fine[None, :]).sum()
-    return float(wins / (len(damaged) * len(fine)))
+    wins = (rotten[:, None] > fresh[None, :]).sum() + 0.5 * (rotten[:, None] == fresh[None, :]).sum()
+    return float(wins / (len(rotten) * len(fresh)))
 
 
 def compare_with_baselines(y_true: np.ndarray, models: dict[str, np.ndarray], conf: float = 0.25) -> list[dict]:
-    """Parcel-level comparison on the same test images, at a fixed threshold."""
+    """Item-level comparison on the same test images, at a fixed threshold."""
     majority = int(y_true.mean() >= 0.5)
     candidates = {
         **models,
-        "Trivial: predict nothing (pass every parcel)": np.zeros(len(y_true)),
-        f"Trivial: majority class (flag {'every' if majority else 'no'} parcel)": np.full(len(y_true), float(majority)),
+        "Trivial: predict nothing (pass every item)": np.zeros(len(y_true)),
+        f"Trivial: majority class (flag {'every' if majority else 'no'} item)": np.full(len(y_true), float(majority)),
     }
     rows = []
     for name, y_score in candidates.items():
@@ -267,17 +271,17 @@ def main() -> None:
     })
     save_json("box_metrics.json", evaluate_boxes(weights, data_yaml, device))
 
-    scores = score_test_parcels(weights, names, device)
+    scores = score_test_items(weights, names, device)
     scores.to_csv(ARTIFACTS / "test_scores.csv", index=False)
 
     if decisions.POSITIVE_CLASSES is None:
         print("\nPOSITIVE_CLASSES is not set in decisions.py: skipping the "
-              "parcel-level comparison and the cost sweep.")
+              "item-level comparison and the cost sweep.")
         return
-    y_true, y_score = costing.parcel_level(scores, decisions.POSITIVE_CLASSES)
+    y_true, y_score = costing.item_level(scores, decisions.POSITIVE_CLASSES)
     save_json("baselines.json", compare_with_baselines(y_true, {
         "Finetuned yolo11n": y_score,
-        "Zero-shot COCO yolo11n (any object)": scores["score_coco_any"].to_numpy(),
+        "Zero-shot COCO yolo11n (fruit found)": scores["score_coco_fruit"].to_numpy(),
     }))
 
     missing = costing.missing_decisions()

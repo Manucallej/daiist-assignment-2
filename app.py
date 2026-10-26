@@ -1,5 +1,5 @@
 """
-Assignment 2: Gradio dashboard for parcel damage detection.
+Assignment 2: Gradio dashboard for rotten fruit detection.
 
     uv run python main.py app
 
@@ -8,7 +8,7 @@ and the evaluation outputs in artifacts/. It never trains or re-evaluates.
 
 The two sliders at the top set the review band. Every view below follows
 them: the predictions on an uploaded image, the outcome table, the expected
-cost per 1,000 parcels, the share sent to a person and the cost curve.
+cost per 1,000 items, the share sent to a person and the cost curve.
 Costs and volumes come from decisions.py, the same file train.py used.
 """
 
@@ -45,10 +45,10 @@ dataset_stats = load_json("dataset_stats.json")
 scores_path = ARTIFACTS / "test_scores.csv"
 test_scores = pd.read_csv(scores_path) if scores_path.exists() else None
 
-# Parcel-level labels and scores, if training has run and positives are chosen.
+# Item-level labels and scores, if training has run and positives are chosen.
 have_scores = test_scores is not None and decisions.POSITIVE_CLASSES is not None
 if have_scores:
-    y_true, y_score = costing.parcel_level(test_scores, decisions.POSITIVE_CLASSES)
+    y_true, y_score = costing.item_level(test_scores, decisions.POSITIVE_CLASSES)
 missing = costing.missing_decisions()
 can_cost = have_scores and not missing
 
@@ -66,13 +66,13 @@ def status_note() -> str:
     if run.get("smoke_test"):
         notes.append("⚠️ These weights come from a SMOKE_TEST run (1 epoch, 10% of data). Retrain before submitting.")
     if decisions.POSITIVE_CLASSES is None:
-        notes.append("⚠️ Set `POSITIVE_CLASSES` in decisions.py to see parcel-level results.")
+        notes.append("⚠️ Set `POSITIVE_CLASSES` in decisions.py to see item-level results.")
     if missing:
         notes.append(f"⚠️ Cost views are off until these are set in decisions.py: {', '.join(missing)}.")
     return "\n\n".join(notes)
 
 
-# --- Inspect a parcel --------------------------------------------------------
+# --- Inspect an item --------------------------------------------------------
 
 def verdict(score: float, low: float, high: float) -> str:
     low, high = min(low, high), max(low, high)
@@ -80,14 +80,14 @@ def verdict(score: float, low: float, high: float) -> str:
         return "PASS"
     if score < high:
         return "SEND TO HUMAN REVIEW"
-    return "FAIL (damaged)"
+    return "FAIL (rotten)"
 
 
 def inspect(image_path: str | None, low: float, high: float):
     if image_path is None:
-        return None, "Upload a parcel image."
+        return None, "Upload a fruit image."
     # Draw every box at or above the band's lower edge: those are the ones
-    # that move a parcel out of "pass".
+    # that move an item out of "pass".
     result = model.predict(image_path, conf=min(low, high), verbose=False)[0]
     annotated = result.plot()[:, :, ::-1]  # BGR -> RGB
     positive = decisions.POSITIVE_CLASSES or list(model.names.values())
@@ -96,7 +96,7 @@ def inspect(image_path: str | None, low: float, high: float):
         if model.names[int(cls)] in positive
     ]
     score = max(confs, default=0.0)
-    return annotated, f"### {verdict(score, low, high)}\nParcel score: **{score:.2f}** (highest confidence among {', '.join(positive)})"
+    return annotated, f"### {verdict(score, low, high)}\nItem score: **{score:.2f}** (highest confidence among {', '.join(positive)})"
 
 
 # --- Operating point ---------------------------------------------------------
@@ -111,7 +111,7 @@ def cost_curve(low: float, high: float):
     ax.axvline(best_t, color="#c0392b", linestyle="--", label=f"cheapest single threshold: {best_t:.2f}")
     ax.axvspan(min(low, high), max(low, high), color="#f39c12", alpha=0.25, label="current review band")
     ax.set_xlabel("confidence threshold (model decides alone)")
-    ax.set_ylabel("expected cost per 1,000 parcels (€)")
+    ax.set_ylabel("expected cost per 1,000 items (€)")
     ax.legend(loc="best")
     fig.tight_layout()
     return fig
@@ -121,13 +121,13 @@ def operating_point(low: float, high: float):
     if not have_scores:
         return None, "Run training and set `POSITIVE_CLASSES` first.", cost_curve(low, high), None
     counts = costing.outcome_counts(y_true, y_score, min(low, high), max(low, high))
-    table = pd.DataFrame(counts, columns=OUTCOMES, index=["truly fine", "truly damaged"]).reset_index(names="test parcels")
+    table = pd.DataFrame(counts, columns=OUTCOMES, index=["truly fresh", "truly rotten"]).reset_index(names="test items")
     if not can_cost:
         return table, f"Cost needs: {', '.join(missing)}", cost_curve(low, high), None
     result = costing.evaluate_band(y_true, y_score, low, high)
     summary = (
-        f"**Expected cost:** €{result.cost_per_1000:,.2f} per 1,000 parcels  \n"
-        f"**Sent to review:** {result.review_share:.1%} of parcels "
+        f"**Expected cost:** €{result.cost_per_1000:,.2f} per 1,000 items  \n"
+        f"**Sent to review:** {result.review_share:.1%} of items "
         f"→ {result.reviews_per_day:,.0f} a day → {result.reviewers_needed:.2f} reviewers  \n"
         f"_Rates come from the test split; costs are mixed at a base rate of {decisions.BASE_RATE:.2%}._"
     )
@@ -170,38 +170,38 @@ def dataset_table():
         for name, c in info["classes"].items():
             rows.append({
                 "split": split, "images in split": info["images"],
-                "images without damage": info["images_without_damage"],
+                "images without any box": info["images_without_boxes"],
                 "class": name, "instances": c["instances"], "images containing": c["images_containing"],
                 "median box area (% of image)": None if c["box_area_share_median"] is None else round(100 * c["box_area_share_median"], 2),
             })
     return pd.DataFrame(rows)
 
 
-with gr.Blocks(title="Parcel damage triage") as demo:
-    gr.Markdown("# Parcel damage triage")
+with gr.Blocks(title="Rotten fruit triage") as demo:
+    gr.Markdown("# Rotten fruit triage")
     gr.Markdown(status_note())
     with gr.Row():
         low = gr.Slider(0, 1, value=start_band[0], step=0.01, label="Below this score: pass")
         high = gr.Slider(0, 1, value=start_band[1], step=0.01, label="At or above this score: fail (in between: human review)")
 
-    with gr.Tab("Inspect a parcel"):
+    with gr.Tab("Inspect an item"):
         with gr.Row():
-            image_in = gr.Image(type="filepath", label="Parcel image")
+            image_in = gr.Image(type="filepath", label="Fruit image")
             image_out = gr.Image(label="Detections at the lower edge of the band")
         verdict_md = gr.Markdown()
 
     with gr.Tab("Operating point"):
-        outcome_df = gr.Dataframe(label="Test parcels by true label and outcome")
+        outcome_df = gr.Dataframe(label="Test items by true label and outcome")
         cost_md = gr.Markdown()
         curve = gr.Plot(label="Cost against threshold")
-        policy_df = gr.Dataframe(label="Policies compared (per 1,000 parcels, at your base rate)")
+        policy_df = gr.Dataframe(label="Policies compared (per 1,000 items, at your base rate)")
 
     with gr.Tab("Model results"):
-        gr.Markdown("Box-level results on the test split. Per-class first: the average hides which damage the model misses.")
+        gr.Markdown("Box-level results on the test split. Per-class first: the average hides which fruit the model gets wrong.")
         gr.Dataframe(per_class_table(), label="Per class")
         gr.Dataframe(overall_table(), label="Overall")
         gr.Dataframe(pd.DataFrame(baselines).round(3) if baselines else None,
-                     label="Parcel-level comparison with both baselines (threshold 0.25)")
+                     label="Item-level comparison with both baselines (threshold 0.25)")
         gr.Dataframe(box_confusion_table(), label="Box-level confusion matrix (conf 0.25)")
         if (ARTIFACTS / "confusion_matrix.png").exists():
             gr.Image(str(ARTIFACTS / "confusion_matrix.png"), label="Confusion matrix")

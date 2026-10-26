@@ -1,10 +1,10 @@
 """
-Turns per-parcel scores into outcomes, costs and review load.
+Turns per-item scores into outcomes, costs and review load.
 
 Shared by train.py (which saves the sweep) and app.py (which recomputes it
 live as the sliders move), so both always use the same arithmetic.
 
-Every parcel has a true label (1 = damaged, 0 = fine) and a score (the
+Every item has a true label (1 = rotten, 0 = fresh) and a score (the
 model's highest confidence for a positive class, 0 if it found nothing). A
 review band (low, high) turns the score into one of three outcomes:
 
@@ -14,9 +14,9 @@ review band (low, high) turns the score into one of three outcomes:
 
 With low == high the band is empty and the model decides alone.
 
-Rates are measured separately on damaged and on fine test parcels, then
-mixed at BASE_RATE. That is what lets a test split that is mostly damage say
-something about a parcel flow that mostly is not.
+Rates are measured separately on rotten and on fresh test items, then
+mixed at BASE_RATE. That is what lets a test split that is mostly rot say
+something about an item flow that mostly is not.
 """
 
 from dataclasses import dataclass
@@ -34,7 +34,7 @@ REQUIRED = [
     "COST_TRUE_NEGATIVE",
     "SECONDS_PER_REVIEW",
     "REVIEWER_COST_PER_HOUR",
-    "PARCELS_PER_DAY",
+    "ITEMS_PER_DAY",
     "REVIEW_HOURS_PER_PERSON_PER_DAY",
 ]
 
@@ -48,10 +48,10 @@ def missing_decisions() -> list[str]:
     return [name for name in REQUIRED if getattr(decisions, name) is None]
 
 
-def parcel_level(scores: pd.DataFrame, positive: list[str]) -> tuple[np.ndarray, np.ndarray]:
-    """True label and finetuned score per test parcel, for the positive classes.
+def item_level(scores: pd.DataFrame, positive: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    """True label and finetuned score per test item, for the positive classes.
 
-    A parcel is damaged if it has a box of any positive class, and its score is
+    An item is rotten if it has a box of any positive class, and its score is
     the model's highest confidence across those classes.
     """
     y_true = scores[[f"true_{c}" for c in positive]].max(axis=1).to_numpy()
@@ -59,23 +59,23 @@ def parcel_level(scores: pd.DataFrame, positive: list[str]) -> tuple[np.ndarray,
     return y_true, y_score
 
 
-def review_cost_per_parcel() -> float:
+def review_cost_per_item() -> float:
     return decisions.SECONDS_PER_REVIEW / 3600 * decisions.REVIEWER_COST_PER_HOUR
 
 
 @dataclass
 class Outcome:
-    """Where the test parcels land for one review band, and what it costs."""
+    """Where the test items land for one review band, and what it costs."""
 
-    counts: np.ndarray       # 2x3 test counts: rows fine/damaged, cols pass/review/fail
-    cost_per_1000: float     # expected euros per 1,000 parcels at BASE_RATE
-    review_share: float      # expected share of parcels sent to a person
+    counts: np.ndarray       # 2x3 test counts: rows fresh/rotten, cols pass/review/fail
+    cost_per_1000: float     # expected euros per 1,000 items at BASE_RATE
+    review_share: float      # expected share of items sent to a person
     reviews_per_day: float
     reviewers_needed: float
 
 
 def outcome_counts(y_true: np.ndarray, scores: np.ndarray, low: float, high: float) -> np.ndarray:
-    """Count test parcels by true label (rows) and outcome (columns)."""
+    """Count test items by true label (rows) and outcome (columns)."""
     outcome = np.where(scores < low, 0, np.where(scores < high, 1, 2))
     counts = np.zeros((2, 3), dtype=int)
     for label in (0, 1):
@@ -89,30 +89,30 @@ def evaluate_band(y_true: np.ndarray, scores: np.ndarray, low: float, high: floa
     counts = outcome_counts(y_true, scores, low, high)
     if (counts.sum(axis=1) == 0).any():
         raise ValueError(
-            "The test split needs both damaged and fine parcels to estimate both "
+            "The test split needs both rotten and fresh items to estimate both "
             "error rates. One of them has no images."
         )
-    # Share of fine (row 0) and damaged (row 1) parcels in each outcome.
+    # Share of fresh (row 0) and rotten (row 1) items in each outcome.
     rates = counts / counts.sum(axis=1, keepdims=True)
-    fine_pass, fine_review, fine_fail = rates[0]
-    dmg_pass, dmg_review, dmg_fail = rates[1]
+    fresh_pass, fresh_review, fresh_fail = rates[0]
+    rot_pass, rot_review, rot_fail = rates[1]
 
-    review = review_cost_per_parcel()
-    cost_if_damaged = (
-        dmg_pass * decisions.COST_FALSE_NEGATIVE
-        + dmg_review * (review + decisions.COST_TRUE_POSITIVE)
-        + dmg_fail * decisions.COST_TRUE_POSITIVE
+    review = review_cost_per_item()
+    cost_if_rotten = (
+        rot_pass * decisions.COST_FALSE_NEGATIVE
+        + rot_review * (review + decisions.COST_TRUE_POSITIVE)
+        + rot_fail * decisions.COST_TRUE_POSITIVE
     )
-    cost_if_fine = (
-        fine_pass * decisions.COST_TRUE_NEGATIVE
-        + fine_review * (review + decisions.COST_TRUE_NEGATIVE)
-        + fine_fail * decisions.COST_FALSE_POSITIVE
+    cost_if_fresh = (
+        fresh_pass * decisions.COST_TRUE_NEGATIVE
+        + fresh_review * (review + decisions.COST_TRUE_NEGATIVE)
+        + fresh_fail * decisions.COST_FALSE_POSITIVE
     )
     p = decisions.BASE_RATE
-    cost = p * cost_if_damaged + (1 - p) * cost_if_fine
-    review_share = p * dmg_review + (1 - p) * fine_review
+    cost = p * cost_if_rotten + (1 - p) * cost_if_fresh
+    review_share = p * rot_review + (1 - p) * fresh_review
 
-    reviews_per_day = review_share * decisions.PARCELS_PER_DAY
+    reviews_per_day = review_share * decisions.ITEMS_PER_DAY
     review_hours = reviews_per_day * decisions.SECONDS_PER_REVIEW / 3600
     return Outcome(
         counts=counts,
@@ -124,7 +124,7 @@ def evaluate_band(y_true: np.ndarray, scores: np.ndarray, low: float, high: floa
 
 
 def sweep(y_true: np.ndarray, scores: np.ndarray) -> list[dict]:
-    """Cost per 1,000 parcels at every single threshold (model decides alone)."""
+    """Cost per 1,000 items at every single threshold (model decides alone)."""
     rows = []
     for t in THRESHOLDS:
         result = evaluate_band(y_true, scores, t, t)
@@ -151,8 +151,8 @@ def policy_comparison(y_true: np.ndarray, scores: np.ndarray, band: tuple[float,
     """The four policies step 7 asks you to price against each other."""
     alone = best_threshold(sweep(y_true, scores))
     policies = {
-        "Do nothing (pass every parcel)": (NEVER, NEVER),
-        "A person checks every parcel": (0.0, NEVER),
+        "Do nothing (pass every item)": (NEVER, NEVER),
+        "A person checks every item": (0.0, NEVER),
         f"Model alone (threshold {alone:.2f})": (alone, alone),
         f"Model + review band ({band[0]:.2f} to {band[1]:.2f})": band,
     }
