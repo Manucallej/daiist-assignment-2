@@ -61,6 +61,7 @@ TRAIN_SETTINGS = {
 }
 SPLITS = {"train": "train", "val": "valid", "test": "test"}  # YOLO name -> Roboflow folder
 COCO_PERSON_ID = 0  # "person" in the COCO class list
+CM_CONF = 0.25  # confidence at which the box-level confusion matrix is counted
 
 
 def pick_device() -> str:
@@ -155,12 +156,22 @@ def finetune(data_yaml: Path, device: str) -> Path:
 
 def evaluate_boxes(weights: Path, data_yaml: Path, device: str) -> dict:
     """Box-level metrics on the test split, overall and per class."""
-    metrics = YOLO(str(weights)).val(
-        data=str(data_yaml), split="test", device=device,
-        project=str(RUNS_DIR), name="test_eval", exist_ok=True, plots=True,
-    )
-    for plot in ("confusion_matrix.png", "confusion_matrix_normalized.png", "BoxPR_curve.png"):
-        source = Path(metrics.save_dir) / plot
+    model = YOLO(str(weights))
+    common = dict(data=str(data_yaml), split="test", device=device,
+                  project=str(RUNS_DIR), exist_ok=True, plots=True)
+    # AP needs every detection down to a very low confidence ...
+    metrics = model.val(name="test_eval", **common)
+    # ... but the confusion matrix counts whatever val keeps, so it gets its
+    # own pass at a usable threshold, or thousands of near-zero guesses show
+    # up as false alarms.
+    cm_metrics = model.val(name="test_cm", conf=CM_CONF, **common)
+    copies = {
+        "BoxPR_curve.png": metrics.save_dir,
+        "confusion_matrix.png": cm_metrics.save_dir,
+        "confusion_matrix_normalized.png": cm_metrics.save_dir,
+    }
+    for plot, folder in copies.items():
+        source = Path(folder) / plot
         if source.exists():
             shutil.copy(source, ARTIFACTS / plot)
     names = [metrics.names[i] for i in range(len(metrics.names))]
@@ -173,10 +184,11 @@ def evaluate_boxes(weights: Path, data_yaml: Path, device: str) -> dict:
         },
         "per_class": metrics.summary(),
         # Rows are predicted class, columns true class; the last of each is
-        # "background" (a missed box or a false alarm). Counted at conf 0.25.
+        # "background" (a missed box or a false alarm). Counted at CM_CONF.
         "confusion_matrix": {
             "labels": names + ["background"],
-            "matrix": metrics.confusion_matrix.matrix.astype(int).tolist(),
+            "conf": CM_CONF,
+            "matrix": cm_metrics.confusion_matrix.matrix.astype(int).tolist(),
         },
     }
 
