@@ -51,7 +51,7 @@ SMOKE_TEST = os.environ.get("SMOKE_TEST") == "1"
 # Training settings. Record these in REPORT.md alongside where you trained.
 BASE_MODEL = "yolo11n.pt"
 TRAIN_SETTINGS = {
-    "epochs": 1 if SMOKE_TEST else 60,
+    "epochs": 1 if SMOKE_TEST else 15,
     "patience": 15,          # stop early if val mAP has not improved for this many epochs
     "imgsz": 640,            # the dataset was exported at 640x640
     "batch": 16,
