@@ -4,7 +4,7 @@ Turns per-item scores into outcomes, costs and review load.
 Shared by train.py (which saves the sweep) and app.py (which recomputes it
 live as the sliders move), so both always use the same arithmetic.
 
-Every item has a true label (1 = rotten, 0 = fresh) and a score (the
+Every item has a true label (1 = violation, 0 = compliant) and a score (the
 model's highest confidence for a positive class, 0 if it found nothing). A
 review band (low, high) turns the score into one of three outcomes:
 
@@ -14,9 +14,9 @@ review band (low, high) turns the score into one of three outcomes:
 
 With low == high the band is empty and the model decides alone.
 
-Rates are measured separately on rotten and on fresh test items, then
-mixed at BASE_RATE. That is what lets a test split that is mostly rot say
-something about an item flow that mostly is not.
+Rates are measured separately on violation and on compliant test items, then
+mixed at BASE_RATE. That is what lets a test split collected to show violations say
+something about a depot exit where they are rare.
 """
 
 from dataclasses import dataclass
@@ -51,7 +51,7 @@ def missing_decisions() -> list[str]:
 def item_level(scores: pd.DataFrame, positive: list[str]) -> tuple[np.ndarray, np.ndarray]:
     """True label and finetuned score per test item, for the positive classes.
 
-    An item is rotten if it has a box of any positive class, and its score is
+    An item is a violation if it has a box of any positive class, and its score is
     the model's highest confidence across those classes.
     """
     y_true = scores[[f"true_{c}" for c in positive]].max(axis=1).to_numpy()
@@ -67,7 +67,7 @@ def review_cost_per_item() -> float:
 class Outcome:
     """Where the test items land for one review band, and what it costs."""
 
-    counts: np.ndarray       # 2x3 test counts: rows fresh/rotten, cols pass/review/fail
+    counts: np.ndarray       # 2x3 test counts: rows compliant/violation, cols pass/review/fail
     cost_per_1000: float     # expected euros per 1,000 items at BASE_RATE
     review_share: float      # expected share of items sent to a person
     reviews_per_day: float
@@ -89,28 +89,28 @@ def evaluate_band(y_true: np.ndarray, scores: np.ndarray, low: float, high: floa
     counts = outcome_counts(y_true, scores, low, high)
     if (counts.sum(axis=1) == 0).any():
         raise ValueError(
-            "The test split needs both rotten and fresh items to estimate both "
+            "The test split needs both violation and compliant items to estimate both "
             "error rates. One of them has no images."
         )
-    # Share of fresh (row 0) and rotten (row 1) items in each outcome.
+    # Share of compliant (row 0) and violation (row 1) items in each outcome.
     rates = counts / counts.sum(axis=1, keepdims=True)
-    fresh_pass, fresh_review, fresh_fail = rates[0]
-    rot_pass, rot_review, rot_fail = rates[1]
+    compliant_pass, compliant_review, compliant_fail = rates[0]
+    vio_pass, vio_review, vio_fail = rates[1]
 
     review = review_cost_per_item()
-    cost_if_rotten = (
-        rot_pass * decisions.COST_FALSE_NEGATIVE
-        + rot_review * (review + decisions.COST_TRUE_POSITIVE)
-        + rot_fail * decisions.COST_TRUE_POSITIVE
+    cost_if_violation = (
+        vio_pass * decisions.COST_FALSE_NEGATIVE
+        + vio_review * (review + decisions.COST_TRUE_POSITIVE)
+        + vio_fail * decisions.COST_TRUE_POSITIVE
     )
-    cost_if_fresh = (
-        fresh_pass * decisions.COST_TRUE_NEGATIVE
-        + fresh_review * (review + decisions.COST_TRUE_NEGATIVE)
-        + fresh_fail * decisions.COST_FALSE_POSITIVE
+    cost_if_compliant = (
+        compliant_pass * decisions.COST_TRUE_NEGATIVE
+        + compliant_review * (review + decisions.COST_TRUE_NEGATIVE)
+        + compliant_fail * decisions.COST_FALSE_POSITIVE
     )
     p = decisions.BASE_RATE
-    cost = p * cost_if_rotten + (1 - p) * cost_if_fresh
-    review_share = p * rot_review + (1 - p) * fresh_review
+    cost = p * cost_if_violation + (1 - p) * cost_if_compliant
+    review_share = p * vio_review + (1 - p) * compliant_review
 
     reviews_per_day = review_share * decisions.ITEMS_PER_DAY
     review_hours = reviews_per_day * decisions.SECONDS_PER_REVIEW / 3600

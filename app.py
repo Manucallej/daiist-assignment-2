@@ -1,5 +1,5 @@
 """
-Assignment 2: Gradio dashboard for rotten fruit detection.
+Assignment 2: Gradio dashboard for helmet compliance detection.
 
     uv run python main.py app
 
@@ -80,12 +80,12 @@ def verdict(score: float, low: float, high: float) -> str:
         return "PASS"
     if score < high:
         return "SEND TO HUMAN REVIEW"
-    return "FAIL (rotten)"
+    return "FAIL (no helmet)"
 
 
 def inspect(image_path: str | None, low: float, high: float):
     if image_path is None:
-        return None, "Upload a fruit image."
+        return None, "Upload an image of a rider."
     # Draw every box at or above the band's lower edge: those are the ones
     # that move an item out of "pass".
     result = model.predict(image_path, conf=min(low, high), verbose=False)[0]
@@ -121,7 +121,7 @@ def operating_point(low: float, high: float):
     if not have_scores:
         return None, "Run training and set `POSITIVE_CLASSES` first.", cost_curve(low, high), None
     counts = costing.outcome_counts(y_true, y_score, min(low, high), max(low, high))
-    table = pd.DataFrame(counts, columns=OUTCOMES, index=["truly fresh", "truly rotten"]).reset_index(names="test items")
+    table = pd.DataFrame(counts, columns=OUTCOMES, index=["truly wearing a helmet", "truly without a helmet"]).reset_index(names="test items")
     if not can_cost:
         return table, f"Cost needs: {', '.join(missing)}", cost_curve(low, high), None
     result = costing.evaluate_band(y_true, y_score, low, high)
@@ -177,8 +177,8 @@ def dataset_table():
     return pd.DataFrame(rows)
 
 
-with gr.Blocks(title="Rotten fruit triage") as demo:
-    gr.Markdown("# Rotten fruit triage")
+with gr.Blocks(title="Helmet compliance check") as demo:
+    gr.Markdown("# Helmet compliance check")
     gr.Markdown(status_note())
     with gr.Row():
         low = gr.Slider(0, 1, value=start_band[0], step=0.01, label="Below this score: pass")
@@ -186,7 +186,7 @@ with gr.Blocks(title="Rotten fruit triage") as demo:
 
     with gr.Tab("Inspect an item"):
         with gr.Row():
-            image_in = gr.Image(type="filepath", label="Fruit image")
+            image_in = gr.Image(type="filepath", label="Rider image")
             image_out = gr.Image(label="Detections at the lower edge of the band")
         verdict_md = gr.Markdown()
 
@@ -197,7 +197,7 @@ with gr.Blocks(title="Rotten fruit triage") as demo:
         policy_df = gr.Dataframe(label="Policies compared (per 1,000 items, at your base rate)")
 
     with gr.Tab("Model results"):
-        gr.Markdown("Box-level results on the test split. Per-class first: the average hides which fruit the model gets wrong.")
+        gr.Markdown("Box-level results on the test split. Per-class first: the average hides which case the model gets wrong.")
         gr.Dataframe(per_class_table(), label="Per class")
         gr.Dataframe(overall_table(), label="Overall")
         gr.Dataframe(pd.DataFrame(baselines).round(3) if baselines else None,

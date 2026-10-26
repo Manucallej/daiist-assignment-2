@@ -10,8 +10,9 @@ each figure in REPORT.md has exactly one home in the code.
 Until a value is filled in, training and evaluation still run, but the cost
 sweep is skipped and the dashboard's cost views say what is missing.
 
-An "item" is one image: one piece of fruit (or one view of the line) that
-gets a pass / review / fail decision.
+An "item" is one image: one check of a rider (or group of riders) that gets a
+pass / review / fail decision. A violation is an item with someone not
+wearing a helmet.
 
 Units: euros per item, seconds, and items per day.
 """
@@ -19,29 +20,28 @@ Units: euros per item, seconds, and items per day.
 # --- Dataset (step 2) --------------------------------------------------------
 # The exact Roboflow Universe version this pipeline is built on. Used as is,
 # never forked.
-ROBOFLOW_WORKSPACE = "project-irggm"
-ROBOFLOW_PROJECT = "-w4yds"
+ROBOFLOW_WORKSPACE = "a-yvlja"
+ROBOFLOW_PROJECT = "helmet-and-non-helmet-abb47"
 ROBOFLOW_VERSION = 1
 
 # --- What counts as "positive" (step 5) -------------------------------------
-# Which detected classes make an item count as rotten. An item's score is the
+# Which detected classes make an item a violation. An item's score is the
 # highest confidence among detections of these classes; detections of any
-# other class (the fresh ones) do not raise it. Must be names from the
-# dataset: fresh_apples, fresh_banana, fresh_oranges, rotten_apples,
-# rotten_banana, rotten_oranges.
+# other class do not raise it. Must be names from the dataset:
+# "With Helmet", "Without Helmet".
 POSITIVE_CLASSES: list[str] | None = None
 
 # --- Base rate (step 6) ------------------------------------------------------
-# Share of items that are actually rotten at your point in the chain, between
-# 0 and 1. The test split's own ratio is NOT this: the dataset was collected
-# to show rot, a real sorting line mostly does not.
+# Share of items that really are violations at your checkpoint, between 0 and
+# 1. The test split's own ratio is NOT this: the dataset was collected to show
+# both cases, a real depot exit mostly does not.
 BASE_RATE: float | None = None
 
 # --- Cost of each outcome, in euros per item (step 6) ------------------------
-COST_FALSE_NEGATIVE: float | None = None  # rotten item passed as fresh
-COST_FALSE_POSITIVE: float | None = None  # fresh item rejected as rotten
-COST_TRUE_POSITIVE: float | None = None   # rotten item correctly rejected
-COST_TRUE_NEGATIVE: float | None = None   # fresh item correctly passed
+COST_FALSE_NEGATIVE: float | None = None  # rider without a helmet let through
+COST_FALSE_POSITIVE: float | None = None  # rider with a helmet stopped anyway
+COST_TRUE_POSITIVE: float | None = None   # rider without a helmet correctly stopped
+COST_TRUE_NEGATIVE: float | None = None   # rider with a helmet correctly let through
 
 # --- Human review (step 7) ---------------------------------------------------
 # Assumes a reviewer always gets the item right, so a reviewed item costs its

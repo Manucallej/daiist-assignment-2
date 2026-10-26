@@ -1,5 +1,5 @@
 """
-Assignment 2: training pipeline for rotten fruit detection.
+Assignment 2: training pipeline for helmet compliance detection.
 
     uv run python main.py train
 
@@ -7,7 +7,7 @@ Start to finish, with no manual steps:
 
 1. Download the dataset version named in decisions.py from Roboflow Universe.
 2. Describe it from its label files: images and instances per class and split,
-   and how big each fruit is relative to the image.
+   and how big each head is relative to the image.
 3. Finetune yolo11n from its pretrained COCO checkpoint, and copy the best
    weights to weights/best.pt.
 4. Evaluate on the test split: box-level metrics per class and the confusion
@@ -60,7 +60,7 @@ TRAIN_SETTINGS = {
     "fraction": 0.1 if SMOKE_TEST else 1.0,
 }
 SPLITS = {"train": "train", "val": "valid", "test": "test"}  # YOLO name -> Roboflow folder
-COCO_FRUIT_IDS = [46, 47, 49]  # banana, apple, orange in the COCO class list
+COCO_PERSON_ID = 0  # "person" in the COCO class list
 
 
 def pick_device() -> str:
@@ -200,25 +200,25 @@ def score_test_items(weights: Path, names: list[str], device: str) -> pd.DataFra
             mine = confidences[classes == index]
             row[f"score_{name}"] = float(mine.max()) if len(mine) else 0.0
 
-        # COCO knows apple, banana and orange but not fresh versus rotten, so
-        # zero-shot the best it can say is "there is a fruit here". Its score
-        # is its top confidence for any of those three classes.
+        # COCO knows "person" but has no helmet class, so zero-shot the best
+        # it can say is "there is a person here". Its score is its top
+        # confidence for "person".
         result = coco.predict(image, conf=0.001, device=device, verbose=False)[0]
         coco_conf = result.boxes.conf.cpu().numpy()
         coco_cls = result.boxes.cls.cpu().numpy().astype(int)
-        fruit = np.isin(coco_cls, COCO_FRUIT_IDS)
-        row["score_coco_fruit"] = float(coco_conf[fruit].max()) if fruit.any() else 0.0
+        person = coco_cls == COCO_PERSON_ID
+        row["score_coco_person"] = float(coco_conf[person].max()) if person.any() else 0.0
         rows.append(row)
     return pd.DataFrame(rows)
 
 
 def roc_auc(y_true: np.ndarray, y_score: np.ndarray) -> float | None:
-    """Chance that a random rotten item outscores a random fresh one."""
-    rotten, fresh = y_score[y_true == 1], y_score[y_true == 0]
-    if len(rotten) == 0 or len(fresh) == 0:
+    """Chance that a random violation outscores a random compliant item."""
+    violation, compliant = y_score[y_true == 1], y_score[y_true == 0]
+    if len(violation) == 0 or len(compliant) == 0:
         return None
-    wins = (rotten[:, None] > fresh[None, :]).sum() + 0.5 * (rotten[:, None] == fresh[None, :]).sum()
-    return float(wins / (len(rotten) * len(fresh)))
+    wins = (violation[:, None] > compliant[None, :]).sum() + 0.5 * (violation[:, None] == compliant[None, :]).sum()
+    return float(wins / (len(violation) * len(compliant)))
 
 
 def compare_with_baselines(y_true: np.ndarray, models: dict[str, np.ndarray], conf: float = 0.25) -> list[dict]:
@@ -281,7 +281,7 @@ def main() -> None:
     y_true, y_score = costing.item_level(scores, decisions.POSITIVE_CLASSES)
     save_json("baselines.json", compare_with_baselines(y_true, {
         "Finetuned yolo11n": y_score,
-        "Zero-shot COCO yolo11n (fruit found)": scores["score_coco_fruit"].to_numpy(),
+        "Zero-shot COCO yolo11n (person found)": scores["score_coco_person"].to_numpy(),
     }))
 
     missing = costing.missing_decisions()
