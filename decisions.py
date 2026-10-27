@@ -37,4 +37,4 @@ REVIEWER_COST_PER_HOUR: float | None = 20.0     # loaded hourly cost (salary + o
 ITEMS_PER_DAY: int | None = 1500                # riders through the checkpoint per day
 REVIEW_HOURS_PER_PERSON_PER_DAY: float | None = 6.0  # productive hours after breaks
 
-REVIEW_BAND: tuple[float, float] | None = None  # choose after inspecting the sweep
+REVIEW_BAND: tuple[float, float] | None = (0.27, 0.79)  # chosen after inspecting the sweep

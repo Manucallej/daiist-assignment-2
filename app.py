@@ -110,6 +110,11 @@ def cost_curve(low: float, high: float):
     ax.plot([r["threshold"] for r in sweep], [r["cost_per_1000"] for r in sweep], color="#1f4e79")
     ax.axvline(best_t, color="#c0392b", linestyle="--", label=f"cheapest single threshold: {best_t:.2f}")
     ax.axvspan(min(low, high), max(low, high), color="#f39c12", alpha=0.25, label="current review band")
+    if decisions.REVIEW_BAND:
+        for edge in decisions.REVIEW_BAND:
+            ax.axvline(edge, color="#2e7d32", linestyle=":", linewidth=2)
+        ax.plot([], [], color="#2e7d32", linestyle=":", linewidth=2,
+                label=f"chosen band: {decisions.REVIEW_BAND[0]:.2f} to {decisions.REVIEW_BAND[1]:.2f}")
     ax.set_xlabel("confidence threshold (model decides alone)")
     ax.set_ylabel("expected cost per 1,000 items (€)")
     ax.legend(loc="best")
