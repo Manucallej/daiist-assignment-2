@@ -83,9 +83,7 @@ The model is better at spotting helmets than at spotting missing helmets, and th
 | Without Helmet | 0.85 | 0.82 |
  
 Precision is how often a box the model draws is right. Recall is how many of the real heads it finds. These are per head, not per image.
- 
-![Confusion matrix](artifacts/confusion_matrix.png)
- 
+  
 - **Stronger class**: With Helmet. It has about twice as many training examples.
 - **Weaker class**: Without Helmet. It finds about 82% of the heads without helmets.
 - **What it gets confused with**: The model almost never mixes up the two classes. Its mistakes are mostly heads it misses completely, or boxes it draws where there is no head. So the main difficulty is finding heads, not deciding whether they wear a helmet.
