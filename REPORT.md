@@ -15,8 +15,8 @@ A missed violation is around 8× worse than a false alarm. This means the thresh
 
 All of these figures are just assumptions.
 
-*Addition:* The 8x figure is the headline asymmetry, but it is not the ratio that drives the threshold.
-Stopping a real violation is not free: a true positive still costs €3.00 (€2.00 from rider time, €1.00 from delay risk [20% chance of a late delivery x €5]). So catching a violation only saves €2.00 versus missing it (5.00 - 3.00), and the ratio that matters is 2.00 / 0.65, about 3 to 1. An item is worth flagging once the chance it is a violation passes 0.65 / (0.65 + 2.00), about 25%.
+The 8x figure is the main asymmetry, but it is not the ratio that drives the threshold.
+Stopping a real violation is not free: a true positive costs €3.00 (€2.00 from rider time, €1.00 from delay risk [20% chance of a late delivery x €5]). So catching a violation only saves €2.00 versus missing it (5.00 - 3.00), and the ratio that matters is 2.00 / 0.65, about 3 to 1. An item is worth flagging once the chance it is a violation passes 0.65 / (0.65 + 2.00), about 25%.
 
 ## Dataset
 
@@ -122,7 +122,7 @@ Baseline alternatives, at 1,500 items/day and a 3% base rate (review costs 10 s 
 | Model decides on its own | about €169 | One cut-off at 0.66 |
 | Model + review band (my design) | about €145 | Cut-offs at 0.27 and 0.79, about 92 reviews a day |
  
-Under these assumptions, having a person check everything barely beats doing nothing, so the value of the model depends heavily on the cost assumptions. *Addition:* My design costs about €145 a day, about €80 less than doing nothing. Even a perfect model could only save about €90 a day, so the design gets most of what is possible. This is a little optimistic, because I chose the cut-offs using the same images I measured on.
+Under these assumptions, having a person check everything barely beats doing nothing, so the value of the model depends heavily on the cost assumptions. This design costs about €145 a day, about €80 less than doing nothing. Even a perfect model could only save about €90 a day, so the design gets most of what is possible. This is a little optimistic, because I chose the cut-offs using the same images I measured on.
  
 ## Limitations & next steps
  
