@@ -130,7 +130,8 @@ Under these assumptions, having a person check everything barely beats doing not
 - **Thresholds tuned on the test set**: I chose the cut-offs and measured the cost on the same images, so the result is a bit too good. I would choose them on the validation set and test once at the end. The test set also has only 248 violation images, so the recall figures are uncertain.
 - **Short training run**: The model trained for only 15 epochs, so early stopping could not stop it. I did not check whether it was still improving. I would train longer and look at the validation curve first.
 - **One score per image**: A single wrong box can flag a whole group image, and a missed head in a group can let it pass. I would look at group images separately and consider scoring each rider.
+- **Missing some heads**“ The model sometimes misses heads entirely, about 1 in 10 for riders without a helmet, rather than misclassifying them. When the missed head is the only violation in the image, the cost is counted as a false negative, which is fine. However, when another rider in the same image is detected, the image is flagged and the missed rider is not counted, so the cost is understated for group images.
 
 ## Generative AI use disclosure
 
-I'm yet to write this.
+I have used AI to help me in the creation of the code in its entirety. However, I have written the report and have reviewed the code myself. 
