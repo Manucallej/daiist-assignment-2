@@ -134,4 +134,4 @@ Under these assumptions, having a person check everything barely beats doing not
 
 ## Generative AI use disclosure
 
-I have used AI to help me in the creation of the code in its entirety. However, I have written the report and have reviewed the code myself. 
+I have used AI to help me in the creation of the code in its entirety.  It also found the dataset options (I made the final decision among the ideas I had with logistics, I didn't like a rotten fruit option it gave me, and I found it quite complicated to get a dataset in Roboflow that was actually good, with the appropriate classes without merging, for a good business case, within the allowed guidelines, and with an appropriate amount of images). It ran the Colab training, downloaded the results and pushed to GitHub; all of this with my supervision and approval. It also checked my report’s numbers against the results. However, I have written the report and have reviewed the code myself.
