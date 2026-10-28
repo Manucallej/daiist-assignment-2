@@ -45,7 +45,7 @@ From `dataset_stats.json`, the median head box in the test split is about 1.1% o
 ## Finetuning and baselines
 
 - **Model and task**: YOLO11n object detection, finetuned from the COCO checkpoint. **Detection** rather than whole-image classification because the labels are boxes, images can hold several riders, and a box shows the reviewer which rider triggered the flag. Nano size because it is fast and enough to show the pipeline.
-- **Settings**: 15 epochs, early stopping patience 15, image size 640, batch 16, seed 0, deterministic. Trained on a GPU, per `run.json`. With 15 epochs and patience 15, early stopping could never trigger.
+- **Settings**: 15 epochs, early stopping patience 15, image size 640, batch 16, seed 0, deterministic. Trained on a GPU on Google Colab, per `run.json`. With 15 epochs and patience 15, early stopping could never trigger.
 - **Item score**: the highest confidence the model gives any "Without Helmet" box in the image (0 if none).
 
 | Model | Precision | Recall | Notes |
